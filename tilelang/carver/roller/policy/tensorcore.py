@@ -9,7 +9,7 @@ from ..node import PrimFuncNode
 from .common import coalesced_factor, factorize, get_all_factors
 from .default import DefaultPolicy
 from ..rasterization import NoRasterization, Rasterization2DColumn
-from ...arch import is_rdna_arch
+from ...arch import has_mma_support, is_cuda_arch, is_rdna_arch
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class TensorCorePolicy(DefaultPolicy):
         else:
             if is_rdna_arch(self.arch):
                 self.pipeline_stage = self.arch.tuning.pipeline_stage
-            elif self.arch.compute_capability in {"sm_80", "sm_90", "sm_90a"}:
+            elif is_cuda_arch(self.arch) and has_mma_support(self.arch):
                 self.pipeline_stage = 2
             else:
                 self.pipeline_stage = 1
@@ -42,10 +42,7 @@ class TensorCorePolicy(DefaultPolicy):
         if use_async_copy:
             self.use_async_copy = use_async_copy
         else:
-            if self.arch.compute_capability in {"sm_80", "sm_90", "sm_90a"}:
-                self.use_async_copy = True
-            else:
-                self.use_async_copy = False
+            self.use_async_copy = is_cuda_arch(self.arch) and has_mma_support(self.arch)
         # TODO: block reduction depth is not used for now.
         # As there still exists some performance issues for block reduction.
         block_reduction_depth = self.prim_func_node.get_tag("block_reduction_depth")

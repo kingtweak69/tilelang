@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+import re
+
 import tvm
 from tvm.target import Target
 from .arch_base import TileDevice
@@ -6,8 +9,11 @@ from .driver import cuda_driver
 
 
 def check_sm_version(arch: str) -> int:
-    sm_version = arch.replace("sm_", "")
-    return int(sm_version) if sm_version.isdigit() else -1
+    """Extract the numeric SM version from an arch token such as 'sm_90' or 'sm_100f'."""
+    if not arch.startswith("sm_"):
+        return -1
+    match = re.match(r"sm_(\d+)", arch)
+    return int(match.group(1)) if match else -1
 
 
 def is_cuda_arch(arch: TileDevice) -> bool:
@@ -39,7 +45,14 @@ def is_ada_arch(arch: TileDevice) -> bool:
 def is_hopper_arch(arch: TileDevice) -> bool:
     conditions = [True]
     conditions.append(is_cuda_arch(arch))
-    conditions.append(arch.sm_version == 90)
+    conditions.append(arch.sm_version >= 90 and arch.sm_version < 100)
+    return all(conditions)
+
+
+def is_blackwell_arch(arch: TileDevice) -> bool:
+    conditions = [True]
+    conditions.append(is_cuda_arch(arch))
+    conditions.append(arch.sm_version >= 100 and arch.sm_version < 130)
     return all(conditions)
 
 
@@ -104,7 +117,10 @@ def is_tensorcore_supported_precision(in_dtype: str, accum_dtype: str, arch: Til
         return (in_dtype, accum_dtype) in ampere_tensorcore_supported
     elif is_ada_arch(arch):
         return (in_dtype, accum_dtype) in ada_tensorcore_supported
-    elif is_hopper_arch(arch):
+    elif is_hopper_arch(arch) or is_blackwell_arch(arch):
+        return (in_dtype, accum_dtype) in hopper_tensorcore_supported
+    elif is_cuda_arch(arch) and arch.sm_version >= 130:
+        # Future architectures: assume at least Hopper-level tensorcore support.
         return (in_dtype, accum_dtype) in hopper_tensorcore_supported
     else:
         raise ValueError(f"Unsupported architecture: {arch}")
@@ -172,6 +188,7 @@ __all__ = [
     "is_ampere_arch",
     "is_ada_arch",
     "is_hopper_arch",
+    "is_blackwell_arch",
     "is_tensorcore_supported_precision",
     "has_mma_support",
     "CUDA",
